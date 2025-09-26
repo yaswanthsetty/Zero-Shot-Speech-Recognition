@@ -1,0 +1,14 @@
+# Core ML/DL Libraries
+torch
+torchaudio
+transformers
+datasets
+scikit-learn
+
+# Data & Utility Libraries
+pandas
+librosa
+panphon
+
+# For progress bars
+tqdm

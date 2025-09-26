@@ -1,0 +1,15 @@
+{
+    // Dev Container for Zero-Shot Spoken Language Identification
+    "name": "Zero-Shot-LID Python DevContainer",
+    "image": "mcr.microsoft.com/devcontainers/python:3.10-bookworm",
+    "postCreateCommand": "pip install -r requirements.txt",
+    // To add GitHub secrets (e.g., Hugging Face token), use the 'secrets' property in Codespaces or set environment variables in this file.
+    "features": {},
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "python.defaultInterpreterPath": "/usr/local/bin/python"
+            }
+        }
+    }
+}
