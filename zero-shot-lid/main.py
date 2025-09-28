@@ -31,7 +31,7 @@ from src.train import train_model
 from src.evaluate import evaluate_zero_shot, generate_evaluation_report
 
 
-def set_random_seeds(seed: int = None):
+def set_random_seeds(seed: int | None = None):
     """Set random seeds for reproducibility."""
     if seed is None:
         seed = config.RANDOM_SEED
@@ -90,75 +90,46 @@ def main():
         
         audio_embedder = AudioEmbedder()
         
-        # Extract features for all datasets
+        # Extract features for all datasets using batch processing
         print("Extracting features for training data...")
-        train_data_with_features = []
-        for i, item in enumerate(train_dataset.data):
-            if i % 100 == 0:
-                print(f"Processing training sample {i+1}/{len(train_dataset.data)}")
-            
-            try:
-                audio_features = audio_embedder.extract_embeddings(item['audio'])
-                train_data_with_features.append({
-                    'audio_features': audio_features,
-                    'language': item['language'],
-                    'raw_language': item['raw_language']
-                })
-            except Exception as e:
-                print(f"Error processing training sample {i}: {e}")
-                continue
+        train_embeddings = audio_embedder.extract_embeddings_batch(
+            [item['audio'] for item in train_dataset.data], 
+            batch_size=8
+        )
         
         print("Extracting features for validation data...")
-        val_data_with_features = []
-        for i, item in enumerate(val_dataset.data):
-            if i % 50 == 0:
-                print(f"Processing validation sample {i+1}/{len(val_dataset.data)}")
-            
-            try:
-                audio_features = audio_embedder.extract_embeddings(item['audio'])
-                val_data_with_features.append({
-                    'audio_features': audio_features,
-                    'language': item['language'],
-                    'raw_language': item['raw_language']
-                })
-            except Exception as e:
-                print(f"Error processing validation sample {i}: {e}")
-                continue
+        val_embeddings = audio_embedder.extract_embeddings_batch(
+            [item['audio'] for item in val_dataset.data], 
+            batch_size=8
+        )
         
         print("Extracting features for test data...")
-        test_data_with_features = []
-        for i, item in enumerate(test_dataset.data):
-            if i % 50 == 0:
-                print(f"Processing test sample {i+1}/{len(test_dataset.data)}")
-            
-            try:
-                audio_features = audio_embedder.extract_embeddings(item['audio'])
-                test_data_with_features.append({
-                    'audio_features': audio_features,
-                    'language': item['language'],
-                    'raw_language': item['raw_language']
-                })
-            except Exception as e:
-                print(f"Error processing test sample {i}: {e}")
-                continue
+        test_embeddings = audio_embedder.extract_embeddings_batch(
+            [item['audio'] for item in test_dataset.data], 
+            batch_size=8
+        )
         
-        # Create new datasets with features
-        # Add the audio features to the original datasets
-        for i, features in enumerate(train_data_with_features):
-            train_dataset.data[i]['audio_features'] = features['audio_features']
-        for i, features in enumerate(val_data_with_features):
-            val_dataset.data[i]['audio_features'] = features['audio_features']
-        for i, features in enumerate(test_data_with_features):
-            test_dataset.data[i]['audio_features'] = features['audio_features']
+        # Add features directly to the original datasets
+        for i, embedding in enumerate(train_embeddings):
+            if i < len(train_dataset.data):
+                train_dataset.data[i]['audio_features'] = embedding
+        
+        for i, embedding in enumerate(val_embeddings):
+            if i < len(val_dataset.data):
+                val_dataset.data[i]['audio_features'] = embedding
+        
+        for i, embedding in enumerate(test_embeddings):
+            if i < len(test_dataset.data):
+                test_dataset.data[i]['audio_features'] = embedding
         
         train_dataset_features = train_dataset
         val_dataset_features = val_dataset
         test_dataset_features = test_dataset
         
         print(f"Feature extraction completed!")
-        print(f"  Training samples with features: {len(train_data_with_features)}")
-        print(f"  Validation samples with features: {len(val_data_with_features)}")
-        print(f"  Test samples with features: {len(test_data_with_features)}")
+        print(f"  Training samples with features: {len(train_embeddings)}")
+        print(f"  Validation samples with features: {len(val_embeddings)}")
+        print(f"  Test samples with features: {len(test_embeddings)}")
         print()
         
         # Step 3: Generate phonological vectors

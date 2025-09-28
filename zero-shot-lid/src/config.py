@@ -117,7 +117,8 @@ if not os.path.exists(MODELS_DIR):
 
 # Progress bar and logging settings
 VERBOSE = True
-LOG_INTERVAL = 10  # Log every N batches during training
+LOG_INTERVAL = 5  # Log every N batches during training
+FEATURE_EXTRACTION_BATCH_SIZE = 8  # Batch size for feature extraction
 
 # Random seed for reproducibility
 RANDOM_SEED = 42

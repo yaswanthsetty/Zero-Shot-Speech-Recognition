@@ -197,26 +197,49 @@ def load_and_split_data(
         
         # Try different approaches for FLEURS
         try:
-            # First attempt: load specific language subsets
+            # First attempt: load the entire FLEURS dataset without specifying language subsets
             datasets_by_lang = {}
             sample_languages = seen_langs[:3] + unseen_langs[:2]  # Sample subset for demo
             
-            for lang in sample_languages:
-                try:
-                    lang_dataset = load_dataset("google/fleurs", lang, split="train[:100]")
-                    datasets_by_lang[lang] = lang_dataset
-                    print(f"Loaded {len(lang_dataset)} samples for {lang}")
-                except Exception as lang_e:
-                    print(f"Failed to load {lang}: {lang_e}")
-                    continue
+            # Load the main FLEURS dataset
+            try:
+                print("Loading full FLEURS dataset...")
+                full_dataset = load_dataset("google/fleurs", "all", split="dev[:50]")
+                
+                # Group by language
+                for item in full_dataset:
+                    lang = item.get('lang_id', 'unknown') if isinstance(item, dict) else 'unknown'
+                    if lang in sample_languages:
+                        if lang not in datasets_by_lang:
+                            datasets_by_lang[lang] = []
+                        datasets_by_lang[lang].append(item)
+                
+                print(f"Successfully loaded FLEURS data for {len(datasets_by_lang)} languages")
+                for lang, items in datasets_by_lang.items():
+                    print(f"  {lang}: {len(items)} samples")
+                    
+            except Exception as main_e:
+                print(f"Failed to load main FLEURS dataset: {main_e}")
+                # Fallback: try individual language loading with new API
+                for lang in sample_languages:
+                    try:
+                        lang_dataset = load_dataset("google/fleurs", lang, split="dev[:20]")
+                        # Convert to list format
+                        lang_data = list(lang_dataset)
+                        if lang_data:
+                            datasets_by_lang[lang] = lang_data
+                            print(f"Loaded {len(lang_data)} samples for {lang}")
+                    except Exception as lang_e:
+                        print(f"Failed to load {lang}: {lang_e}")
+                        continue
             
             if datasets_by_lang:
                 # Create combined dataset from language subsets
                 all_train_data = []
                 all_val_data = []
                 
-                for lang, dataset in datasets_by_lang.items():
-                    for i, item in enumerate(dataset):
+                for lang, items in datasets_by_lang.items():
+                    for i, item in enumerate(items):
                         data_item = {
                             'audio': item['audio'],
                             'lang_id': lang,
@@ -224,7 +247,7 @@ def load_and_split_data(
                         }
                         
                         # Split 80/20 for train/val
-                        if i < len(dataset) * 0.8:
+                        if i < len(items) * 0.8:
                             all_train_data.append(data_item)
                         else:
                             all_val_data.append(data_item)
@@ -337,17 +360,18 @@ def load_and_split_data(
                 })
     
     # Limit samples if specified
-    if config.MAX_SAMPLES_PER_DATASET is not None:
+    if config.MAX_SAMPLES_PER_DATASET is not None and isinstance(config.MAX_SAMPLES_PER_DATASET, int):
         random.seed(config.RANDOM_SEED)
         
-        if len(train_data) > config.MAX_SAMPLES_PER_DATASET:
-            train_data = random.sample(train_data, config.MAX_SAMPLES_PER_DATASET)
+        max_samples = config.MAX_SAMPLES_PER_DATASET
+        if len(train_data) > max_samples:
+            train_data = random.sample(train_data, max_samples)
             
-        if len(validation_data) > config.MAX_SAMPLES_PER_DATASET:
-            validation_data = random.sample(validation_data, config.MAX_SAMPLES_PER_DATASET)
+        if len(validation_data) > max_samples:
+            validation_data = random.sample(validation_data, max_samples)
             
-        if len(test_data) > config.MAX_SAMPLES_PER_DATASET:
-            test_data = random.sample(test_data, config.MAX_SAMPLES_PER_DATASET)
+        if len(test_data) > max_samples:
+            test_data = random.sample(test_data, max_samples)
     
     print(f"Created datasets:")
     print(f"  - Training: {len(train_data)} samples from seen languages")
@@ -387,7 +411,7 @@ def create_data_loaders(
     train_dataset: AudioDataset,
     validation_dataset: AudioDataset, 
     test_dataset: AudioDataset,
-    batch_size: int = None
+    batch_size: int | None = None
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """
     Create PyTorch DataLoaders for the datasets.
