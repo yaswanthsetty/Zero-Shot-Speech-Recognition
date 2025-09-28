@@ -3,10 +3,15 @@ Configuration file for Zero-Shot Spoken Language Identification project.
 
 This module contains all hyperparameters, data settings, model paths, and other 
 configuration variables used throughout the project.
+
+The configuration automatically adapts to the available system resources
+for optimal performance in different environments (Codespaces, local, cloud).
 """
 
 import torch
 import os
+import psutil
+import gc
 
 # ============================================================================
 # Data Settings
@@ -51,8 +56,57 @@ ALL_LANGUAGES = SEEN_LANGUAGES + UNSEEN_LANGUAGES
 TRAIN_SPLIT_RATIO = 0.8
 VALIDATION_SPLIT_RATIO = 0.2
 
-# Sample limits for demonstration (set to None for full dataset)
-MAX_SAMPLES_PER_DATASET = 500
+# Intelligent resource management based on available memory
+def _get_memory_info():
+    """Get system memory information for intelligent resource allocation."""
+    memory = psutil.virtual_memory()
+    available_gb = memory.available / (1024**3)
+    total_gb = memory.total / (1024**3)
+    return available_gb, total_gb
+
+def _calculate_optimal_settings():
+    """Calculate optimal settings based on system resources."""
+    available_gb, total_gb = _get_memory_info()
+    
+    # Conservative settings for different memory ranges
+    if available_gb >= 12:  # High-end machine
+        return {
+            'max_samples': 1000,
+            'batch_size': 32,
+            'feature_batch_size': 16,
+            'hidden_dim': 512,
+            'num_epochs': 10
+        }
+    elif available_gb >= 8:  # Medium machine
+        return {
+            'max_samples': 500,
+            'batch_size': 16,
+            'feature_batch_size': 8,
+            'hidden_dim': 256,
+            'num_epochs': 5
+        }
+    elif available_gb >= 4:  # Codespaces/lightweight
+        return {
+            'max_samples': 200,
+            'batch_size': 8,
+            'feature_batch_size': 4,
+            'hidden_dim': 128,
+            'num_epochs': 3
+        }
+    else:  # Very constrained
+        return {
+            'max_samples': 100,
+            'batch_size': 4,
+            'feature_batch_size': 2,
+            'hidden_dim': 64,
+            'num_epochs': 2
+        }
+
+# Get optimal settings based on system resources
+_optimal_settings = _calculate_optimal_settings()
+
+# Sample limits - automatically adjusted based on available memory
+MAX_SAMPLES_PER_DATASET = _optimal_settings['max_samples']
 
 # ============================================================================
 # Model Settings
@@ -72,10 +126,10 @@ PHONOLOGICAL_EMBEDDING_DIM = 22  # panphon feature dimension
 # Training Hyperparameters
 # ============================================================================
 
-# Training parameters
+# Training parameters - automatically adjusted for optimal performance
 LEARNING_RATE = 1e-4
-BATCH_SIZE = 32
-NUM_EPOCHS = 10
+BATCH_SIZE = _optimal_settings['batch_size']
+NUM_EPOCHS = _optimal_settings['num_epochs']
 
 # Device configuration (automatically detect GPU availability)
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -83,8 +137,8 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # Optimizer settings
 WEIGHT_DECAY = 1e-5
 
-# Model architecture parameters
-HIDDEN_DIM = 512
+# Model architecture parameters - automatically scaled
+HIDDEN_DIM = _optimal_settings['hidden_dim']
 DROPOUT_RATE = 0.3
 
 # ============================================================================
@@ -118,11 +172,15 @@ if not os.path.exists(MODELS_DIR):
 # Progress bar and logging settings
 VERBOSE = True
 LOG_INTERVAL = 5  # Log every N batches during training
-FEATURE_EXTRACTION_BATCH_SIZE = 8  # Batch size for feature extraction
+FEATURE_EXTRACTION_BATCH_SIZE = _optimal_settings['feature_batch_size']  # Automatically scaled
 
 # Random seed for reproducibility
 RANDOM_SEED = 42
 
+# Display configuration summary
+available_gb, total_gb = _get_memory_info()
 print(f"Configuration loaded. Using device: {DEVICE}")
+print(f"System Memory: {available_gb:.1f}GB available / {total_gb:.1f}GB total")
+print(f"Optimized Settings: batch_size={BATCH_SIZE}, hidden_dim={HIDDEN_DIM}, max_samples={MAX_SAMPLES_PER_DATASET}")
 print(f"Seen languages: {len(SEEN_LANGUAGES)}")
 print(f"Unseen languages: {len(UNSEEN_LANGUAGES)}")

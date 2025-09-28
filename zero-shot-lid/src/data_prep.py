@@ -2,7 +2,7 @@
 Data preparation module for Zero-Shot Spoken Language Identification.
 
 This module handles loading and splitting the FLEURS dataset for training
-and evaluation purposes.
+and evaluation purposes. Now includes support for local audio files.
 """
 
 import torch
@@ -11,7 +11,88 @@ from datasets import load_dataset
 from torch.utils.data import Dataset, DataLoader
 from typing import Tuple, List, Dict, Any
 import random
+from pathlib import Path
+try:
+    import soundfile as sf
+except ImportError:
+    sf = None
 from . import config
+
+
+def load_local_audio_data(data_dir="data/audio"):
+    """
+    Load audio data from local directory structure.
+    
+    Expected structure:
+    data/audio/
+    ├── en_us/
+    │   ├── sample_001.wav
+    │   └── sample_002.wav
+    ├── es_419/
+    │   └── sample_001.wav
+    └── ...
+    
+    Returns:
+        Dict mapping language codes to lists of audio data items
+    """
+    data_dir = Path(data_dir)
+    if not data_dir.exists():
+        print(f"❌ Local audio directory {data_dir} does not exist")
+        return {}
+    
+    if sf is None:
+        print("❌ soundfile not installed. Install with: pip install soundfile")
+        return {}
+    
+    datasets_by_lang = {}
+    
+    for lang_dir in data_dir.iterdir():
+        if lang_dir.is_dir():
+            lang_code = lang_dir.name
+            audio_files = list(lang_dir.glob("*.wav")) + list(lang_dir.glob("*.mp3")) + list(lang_dir.glob("*.flac"))
+            
+            if audio_files:
+                lang_data = []
+                for audio_file in audio_files:
+                    try:
+                        # Load audio file
+                        audio_array, sample_rate = sf.read(audio_file)
+                        
+                        # Ensure mono audio
+                        if len(audio_array.shape) > 1:
+                            audio_array = audio_array.mean(axis=1)
+                        
+                        # Resample to 16kHz if needed (simple approach)
+                        if sample_rate != 16000:
+                            # Simple resampling - for better quality, use librosa
+                            if sample_rate > 16000:
+                                step = sample_rate // 16000
+                                audio_array = audio_array[::step]
+                            else:
+                                # Upsample by repetition (crude but works)
+                                repeat_factor = 16000 // sample_rate
+                                audio_array = np.repeat(audio_array, repeat_factor)
+                            sample_rate = 16000
+                        
+                        # Create data item compatible with FLEURS format
+                        item = {
+                            'audio': {
+                                'array': audio_array.astype(np.float32),
+                                'sampling_rate': sample_rate
+                            },
+                            'lang_id': lang_code,
+                            'id': f"{lang_code}_{audio_file.stem}"
+                        }
+                        lang_data.append(item)
+                        
+                    except Exception as e:
+                        print(f"❌ Failed to load {audio_file}: {e}")
+                
+                if lang_data:
+                    datasets_by_lang[lang_code] = lang_data
+                    print(f"✅ Loaded {len(lang_data)} local audio samples for {lang_code}")
+    
+    return datasets_by_lang
 
 
 def create_synthetic_dataset(seen_langs: List[str], unseen_langs: List[str]):
@@ -27,7 +108,7 @@ def create_synthetic_dataset(seen_langs: List[str], unseen_langs: List[str]):
         unseen_langs: List of unseen language codes
         
     Returns:
-        Tuple of (train_dataset, validation_dataset)
+        Tuple of (train_dataset, validation_dataset, test_dataset)
     """
     print("Creating synthetic audio data...")
     
@@ -104,34 +185,36 @@ def create_synthetic_dataset(seen_langs: List[str], unseen_langs: List[str]):
 
 def generate_synthetic_audio(lang: str, duration: float, sample_rate: int, samples_per_audio: int) -> np.ndarray:
     """Generate synthetic audio signal for a given language."""
-    # Add some frequency characteristics to make languages "different"
-    base_freq = hash(lang) % 1000 + 200  # Different base frequency per language
+    # Create language-specific frequency patterns
+    lang_seed = hash(lang) % 1000
+    np.random.seed(lang_seed)
+    
+    # Generate pink noise with language-specific characteristics
+    frequencies = np.random.rand(10) * 2000 + 500  # 500-2500 Hz range
+    amplitudes = np.random.rand(10) * 0.5 + 0.1
+    
     t = np.linspace(0, duration, samples_per_audio)
+    signal = np.zeros(samples_per_audio)
     
-    # Create synthetic "speech-like" audio with some randomness
-    audio_signal = (
-        0.3 * np.sin(2 * np.pi * base_freq * t) +
-        0.2 * np.sin(2 * np.pi * (base_freq * 1.5) * t) +
-        0.1 * np.random.randn(samples_per_audio)
-    )
+    for freq, amp in zip(frequencies, amplitudes):
+        signal += amp * np.sin(2 * np.pi * freq * t)
     
-    # Apply envelope to make it more speech-like
-    envelope = np.exp(-t / (duration * 0.3))
-    audio_signal = audio_signal * envelope
+    # Add some noise
+    noise = np.random.normal(0, 0.05, samples_per_audio)
+    signal += noise
     
     # Normalize
-    audio_signal = audio_signal / np.max(np.abs(audio_signal))
+    signal = signal / (np.max(np.abs(signal)) + 1e-8)
     
-    return audio_signal
+    return signal
 
 
 class AudioDataset(Dataset):
     """
-    Custom PyTorch Dataset for audio data with language labels.
+    Custom dataset class for audio data.
     
-    Args:
-        data: List of dictionaries containing audio and language information
-        audio_embedder: AudioEmbedder instance for feature extraction
+    This dataset holds audio samples with their corresponding language labels.
+    It's designed to work with PyTorch's DataLoader for efficient batch processing.
     """
     
     def __init__(self, data: List[Dict[str, Any]], audio_embedder=None):
@@ -144,28 +227,16 @@ class AudioDataset(Dataset):
     def __getitem__(self, idx: int) -> Dict[str, Any]:
         item = self.data[idx]
         
-        # If audio embedder is provided, extract features
         if self.audio_embedder is not None:
-            audio_features = self.audio_embedder.extract_embeddings(item['audio'])
+            # Extract audio features on-the-fly
+            audio_features = self.audio_embedder.extract_embeddings([item['audio']])[0]
             return {
                 'audio_features': audio_features,
                 'language': item['language'],
                 'raw_language': item['raw_language']
             }
         else:
-            # For datasets with pre-extracted features
-            if 'audio_features' in item:
-                return {
-                    'audio_features': item['audio_features'],
-                    'language': item['language'],
-                    'raw_language': item['raw_language']
-                }
-            else:
-                return {
-                    'audio': item['audio'],
-                    'language': item['language'],
-                    'raw_language': item['raw_language']
-                }
+            return item
 
 
 def load_and_split_data(
@@ -175,10 +246,8 @@ def load_and_split_data(
     """
     Load and split the FLEURS dataset into train, validation, and test sets.
     
-    This function loads the FLEURS dataset and creates three datasets:
-    - Train dataset: Contains only audio from seen languages
-    - Validation dataset: Contains only audio from seen languages  
-    - Test dataset: Contains only audio from unseen languages (for zero-shot evaluation)
+    This function first tries to load local audio files, then FLEURS dataset,
+    and finally falls back to synthetic data.
     
     Args:
         seen_langs: List of language codes used for training
@@ -190,53 +259,94 @@ def load_and_split_data(
     
     print("Loading FLEURS dataset...")
     
-    # Load the dataset
-    try:
-        # Try loading FLEURS without legacy script loading
-        print("Attempting to load FLEURS dataset...")
+    # First, try to load local audio files
+    print("🔍 Checking for local audio files...")
+    local_datasets = load_local_audio_data()
+    
+    dataset_train = None
+    dataset_validation = None
+    dataset_test = None
+    
+    if local_datasets:
+        print(f"✅ Found local audio data for {len(local_datasets)} languages")
+        print(f"Available languages: {list(local_datasets.keys())}")
         
-        # Try different approaches for FLEURS
+        # Use local data if available
         try:
-            # First attempt: load the entire FLEURS dataset without specifying language subsets
-            datasets_by_lang = {}
-            sample_languages = seen_langs[:3] + unseen_langs[:2]  # Sample subset for demo
+            # Process local data similar to FLEURS format
+            all_train_data = []
+            all_val_data = []
+            all_test_data = []
             
-            # Load the main FLEURS dataset
-            try:
-                print("Loading full FLEURS dataset...")
-                full_dataset = load_dataset("google/fleurs", "all", split="dev[:50]")
-                
-                # Group by language
-                for item in full_dataset:
-                    lang = item.get('lang_id', 'unknown') if isinstance(item, dict) else 'unknown'
-                    if lang in sample_languages:
-                        if lang not in datasets_by_lang:
-                            datasets_by_lang[lang] = []
-                        datasets_by_lang[lang].append(item)
-                
-                print(f"Successfully loaded FLEURS data for {len(datasets_by_lang)} languages")
-                for lang, items in datasets_by_lang.items():
-                    print(f"  {lang}: {len(items)} samples")
+            for lang, items in local_datasets.items():
+                for i, item in enumerate(items):
+                    data_item = {
+                        'audio': item['audio'],
+                        'lang_id': lang,
+                        'id': f"{lang}_{i}"
+                    }
                     
-            except Exception as main_e:
-                print(f"Failed to load main FLEURS dataset: {main_e}")
-                # Fallback: try individual language loading with new API
-                for lang in sample_languages:
-                    try:
-                        lang_dataset = load_dataset("google/fleurs", lang, split="dev[:20]")
-                        # Convert to list format
-                        lang_data = list(lang_dataset)
-                        if lang_data:
-                            datasets_by_lang[lang] = lang_data
-                            print(f"Loaded {len(lang_data)} samples for {lang}")
-                    except Exception as lang_e:
-                        print(f"Failed to load {lang}: {lang_e}")
-                        continue
+                    # Assign to appropriate dataset based on seen/unseen status
+                    if lang in seen_langs:
+                        # Split seen languages 80/20 for train/val
+                        if i < len(items) * 0.8:
+                            all_train_data.append(data_item)
+                        else:
+                            all_val_data.append(data_item)
+                    elif lang in unseen_langs:
+                        # All unseen language data goes to test
+                        all_test_data.append(data_item)
+            
+            # Create mock dataset objects
+            class LocalMockDataset:
+                def __init__(self, data):
+                    self.data = data
+                def __len__(self):
+                    return len(self.data)
+                def __iter__(self):
+                    return iter(self.data)
+            
+            dataset_train = LocalMockDataset(all_train_data)
+            dataset_validation = LocalMockDataset(all_val_data)
+            dataset_test = LocalMockDataset(all_test_data)
+            
+            print(f"✅ Successfully loaded local audio data:")
+            print(f"  Training samples: {len(all_train_data)} (from seen languages)")
+            print(f"  Validation samples: {len(all_val_data)} (from seen languages)")
+            print(f"  Test samples: {len(all_test_data)} (from unseen languages)")
+            
+        except Exception as local_e:
+            print(f"❌ Failed to process local audio data: {local_e}")
+            dataset_train = None
+    
+    # If no local data worked, try loading FLEURS dataset
+    if dataset_train is None:
+        print("📡 No local audio found, attempting to load FLEURS dataset...")
+        
+        try:
+            # Try different FLEURS loading approaches
+            datasets_by_lang = {}
+            sample_languages = seen_langs[:5] + unseen_langs[:3]
+            
+            print("Loading FLEURS dataset using modern HuggingFace API...")
+            
+            # Try simple direct loading first
+            for lang in sample_languages:
+                try:
+                    lang_dataset = load_dataset("google/fleurs", lang, split="validation[:30]")
+                    lang_data = list(lang_dataset)
+                    if lang_data:
+                        datasets_by_lang[lang] = lang_data
+                        print(f"✅ Loaded {len(lang_data)} samples for {lang}")
+                except Exception as lang_e:
+                    print(f"❌ Failed to load {lang}: {lang_e}")
+                    continue
             
             if datasets_by_lang:
-                # Create combined dataset from language subsets
+                # Process FLEURS data into train/val/test
                 all_train_data = []
                 all_val_data = []
+                all_test_data = []
                 
                 for lang, items in datasets_by_lang.items():
                     for i, item in enumerate(items):
@@ -246,14 +356,17 @@ def load_and_split_data(
                             'id': f"{lang}_{i}"
                         }
                         
-                        # Split 80/20 for train/val
-                        if i < len(items) * 0.8:
-                            all_train_data.append(data_item)
-                        else:
-                            all_val_data.append(data_item)
+                        if lang in seen_langs:
+                            # Split seen languages 80/20 for train/val
+                            if i < len(items) * 0.8:
+                                all_train_data.append(data_item)
+                            else:
+                                all_val_data.append(data_item)
+                        elif lang in unseen_langs:
+                            all_test_data.append(data_item)
                 
-                # Create mock dataset objects
-                class MockDataset:
+                # Create dataset objects
+                class FleursMockDataset:
                     def __init__(self, data):
                         self.data = data
                     def __len__(self):
@@ -261,103 +374,64 @@ def load_and_split_data(
                     def __iter__(self):
                         return iter(self.data)
                 
-                dataset_train = MockDataset(all_train_data)
-                dataset_validation = MockDataset(all_val_data)
+                dataset_train = FleursMockDataset(all_train_data)
+                dataset_validation = FleursMockDataset(all_val_data)
+                dataset_test = FleursMockDataset(all_test_data)
                 
-                print(f"Successfully created combined dataset:")
-                print(f"  Training samples: {len(all_train_data)}")
-                print(f"  Validation samples: {len(all_val_data)}")
+                print(f"✅ Successfully loaded FLEURS data:")
+                print(f"  Training samples: {len(all_train_data)} (from seen languages)")
+                print(f"  Validation samples: {len(all_val_data)} (from seen languages)")
+                print(f"  Test samples: {len(all_test_data)} (from unseen languages)")
             else:
-                raise Exception("No language datasets could be loaded")
-                
+                raise Exception("No FLEURS language datasets could be loaded")
+                        
         except Exception as fleurs_error:
-            print(f"FLEURS loading failed: {fleurs_error}")
-            raise Exception("Could not load FLEURS dataset")
+            print(f"❌ FLEURS loading failed: {fleurs_error}")
+            dataset_train = None
+    
+    # Final fallback: create synthetic data
+    if dataset_train is None:
+        print("🎭 Creating synthetic dataset for demonstration...")
         
-    except Exception as e:
-        print(f"Error loading dataset: {e}")
-        print("Creating synthetic dataset for demonstration...")
-        
-        # Create synthetic audio data for demonstration
         dataset_train, dataset_validation, dataset_test = create_synthetic_dataset(seen_langs, unseen_langs)
         
-        # Process synthetic data
-        train_data = []
-        validation_data = []
-        test_data = []
-        
-        # Process training data (already filtered for seen languages)
-        for item in dataset_train:
-            train_data.append({
-                'audio': item['audio'],
-                'language': item['lang_id'],
-                'raw_language': item['lang_id']
-            })
-        
-        # Process validation data (already filtered for seen languages)
+        print("✅ Successfully created synthetic audio data")
+    
+    # Now process the dataset (whether local, FLEURS, or synthetic) into the final format
+    train_data = []
+    validation_data = []
+    test_data = []
+    
+    # Process training data
+    for item in dataset_train:
+        train_data.append({
+            'audio': item['audio'],
+            'language': item['lang_id'],
+            'raw_language': item['lang_id']
+        })
+    
+    # Process validation data
+    if dataset_validation is not None:
         for item in dataset_validation:
             validation_data.append({
                 'audio': item['audio'],
                 'language': item['lang_id'],
                 'raw_language': item['lang_id']
             })
-        
-        # Process test data (already filtered for unseen languages)
+    
+    # Process test data  
+    if dataset_test is not None:
         for item in dataset_test:
             test_data.append({
                 'audio': item['audio'],
                 'language': item['lang_id'],
                 'raw_language': item['lang_id']
             })
-        
-        print(f"Processed synthetic datasets:")
-        print(f"  - Training: {len(train_data)} samples")
-        print(f"  - Validation: {len(validation_data)} samples")
-        print(f"  - Test: {len(test_data)} samples")
-        
-        # Skip the real dataset processing since we're using synthetic data
-        synthetic_data_used = True
     
-    if not 'synthetic_data_used' in locals():
-        # Filter datasets by language (for real data)
-        print("Filtering datasets by language...")
-        
-        # Filter training data for seen languages
-        train_data = []
-        validation_data = []
-        test_data = []
-        
-        # Process training data
-        for item in dataset_train:
-            lang_code = item['lang_id']
-            if lang_code in seen_langs:
-                train_data.append({
-                    'audio': item['audio'],
-                    'language': lang_code,
-                    'raw_language': item['lang_id']
-                })
-            elif lang_code in unseen_langs:
-                test_data.append({
-                    'audio': item['audio'],
-                    'language': lang_code,
-                    'raw_language': item['lang_id']
-                })
-        
-        # Process validation data  
-        for item in dataset_validation:
-            lang_code = item['lang_id']
-            if lang_code in seen_langs:
-                validation_data.append({
-                    'audio': item['audio'],
-                    'language': lang_code,
-                    'raw_language': item['lang_id']
-                })
-            elif lang_code in unseen_langs:
-                test_data.append({
-                    'audio': item['audio'],
-                    'language': lang_code,
-                    'raw_language': item['lang_id']
-                })
+    # Apply filtering by seen/unseen languages and sample limits
+    train_data = [item for item in train_data if item['language'] in seen_langs]
+    validation_data = [item for item in validation_data if item['language'] in seen_langs]
+    test_data = [item for item in test_data if item['language'] in unseen_langs]
     
     # Limit samples if specified
     if config.MAX_SAMPLES_PER_DATASET is not None and isinstance(config.MAX_SAMPLES_PER_DATASET, int):
@@ -373,7 +447,7 @@ def load_and_split_data(
         if len(test_data) > max_samples:
             test_data = random.sample(test_data, max_samples)
     
-    print(f"Created datasets:")
+    print(f"Final datasets:")
     print(f"  - Training: {len(train_data)} samples from seen languages")
     print(f"  - Validation: {len(validation_data)} samples from seen languages")
     print(f"  - Test: {len(test_data)} samples from unseen languages")
@@ -420,68 +494,42 @@ def create_data_loaders(
         train_dataset: Training dataset
         validation_dataset: Validation dataset
         test_dataset: Test dataset
-        batch_size: Batch size for the data loaders
+        batch_size: Batch size for data loading (uses config.BATCH_SIZE if None)
         
     Returns:
-        Tuple of (train_loader, val_loader, test_loader)
+        Tuple of (train_loader, validation_loader, test_loader)
     """
     
     if batch_size is None:
         batch_size = config.BATCH_SIZE
     
-    # Custom collate function to handle variable-length audio
-    def collate_fn(batch):
-        """Custom collate function for batching audio data."""
-        if 'audio_features' in batch[0]:
-            # If features are already extracted
-            audio_features = torch.stack([item['audio_features'] for item in batch])
-            languages = [item['language'] for item in batch]
-            raw_languages = [item['raw_language'] for item in batch]
-            
-            return {
-                'audio_features': audio_features,
-                'languages': languages,
-                'raw_languages': raw_languages
-            }
-        else:
-            # If raw audio data
-            audios = [item['audio'] for item in batch]
-            languages = [item['language'] for item in batch]
-            raw_languages = [item['raw_language'] for item in batch]
-            
-            return {
-                'audios': audios,
-                'languages': languages,
-                'raw_languages': raw_languages
-            }
-    
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
-        collate_fn=collate_fn,
-        num_workers=0  # Set to 0 for compatibility
+        num_workers=0,  # Set to 0 for compatibility
+        pin_memory=False
     )
     
-    val_loader = DataLoader(
+    validation_loader = DataLoader(
         validation_dataset,
         batch_size=batch_size,
         shuffle=False,
-        collate_fn=collate_fn,
-        num_workers=0
+        num_workers=0,
+        pin_memory=False
     )
     
     test_loader = DataLoader(
         test_dataset,
         batch_size=batch_size,
         shuffle=False,
-        collate_fn=collate_fn,
-        num_workers=0
+        num_workers=0,
+        pin_memory=False
     )
     
     print(f"Created data loaders with batch size: {batch_size}")
-    print(f"  - Training batches: {len(train_loader)}")
-    print(f"  - Validation batches: {len(val_loader)}")
+    print(f"  - Train batches: {len(train_loader)}")
+    print(f"  - Validation batches: {len(validation_loader)}")
     print(f"  - Test batches: {len(test_loader)}")
     
-    return train_loader, val_loader, test_loader
+    return train_loader, validation_loader, test_loader

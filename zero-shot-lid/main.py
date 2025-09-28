@@ -8,6 +8,9 @@ This script ties together all components of the project:
 3. Model training
 4. Zero-shot evaluation
 
+The script automatically adapts to system resources for optimal performance
+in different environments (GitHub Codespaces, local machines, cloud instances).
+
 Usage:
     python main.py
 """
@@ -17,6 +20,8 @@ import random
 import numpy as np
 import os
 import sys
+import gc
+import psutil
 from datetime import datetime
 
 # Add src directory to path
@@ -30,6 +35,18 @@ from src.model import create_model
 from src.train import train_model
 from src.evaluate import evaluate_zero_shot, generate_evaluation_report
 
+
+def get_memory_usage():
+    """Get current memory usage in GB."""
+    process = psutil.Process(os.getpid())
+    memory_mb = process.memory_info().rss / 1024 / 1024
+    return memory_mb / 1024
+
+def cleanup_memory():
+    """Force garbage collection and clear caches."""
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
 def set_random_seeds(seed: int | None = None):
     """Set random seeds for reproducibility."""
@@ -90,24 +107,33 @@ def main():
         
         audio_embedder = AudioEmbedder()
         
-        # Extract features for all datasets using batch processing
+        # Extract features for all datasets using adaptive batch processing
         print("Extracting features for training data...")
+        print(f"Memory usage before training extraction: {get_memory_usage():.2f}GB")
+        
         train_embeddings = audio_embedder.extract_embeddings_batch(
             [item['audio'] for item in train_dataset.data], 
-            batch_size=8
+            batch_size=config.FEATURE_EXTRACTION_BATCH_SIZE
         )
+        cleanup_memory()  # Clean up after training extraction
         
         print("Extracting features for validation data...")
+        print(f"Memory usage before validation extraction: {get_memory_usage():.2f}GB")
+        
         val_embeddings = audio_embedder.extract_embeddings_batch(
             [item['audio'] for item in val_dataset.data], 
-            batch_size=8
+            batch_size=config.FEATURE_EXTRACTION_BATCH_SIZE
         )
+        cleanup_memory()  # Clean up after validation extraction
         
         print("Extracting features for test data...")
+        print(f"Memory usage before test extraction: {get_memory_usage():.2f}GB")
+        
         test_embeddings = audio_embedder.extract_embeddings_batch(
             [item['audio'] for item in test_dataset.data], 
-            batch_size=8
+            batch_size=config.FEATURE_EXTRACTION_BATCH_SIZE
         )
+        cleanup_memory()  # Clean up after test extraction
         
         # Add features directly to the original datasets
         for i, embedding in enumerate(train_embeddings):
@@ -130,6 +156,7 @@ def main():
         print(f"  Training samples with features: {len(train_embeddings)}")
         print(f"  Validation samples with features: {len(val_embeddings)}")
         print(f"  Test samples with features: {len(test_embeddings)}")
+        print(f"  Memory usage after feature extraction: {get_memory_usage():.2f}GB")
         print()
         
         # Step 3: Generate phonological vectors
