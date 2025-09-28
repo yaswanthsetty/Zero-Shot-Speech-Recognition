@@ -3,7 +3,9 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/release/python-3100/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-orange.svg)](https://pytorch.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Code style: black](https://img.shields.io/badge/code%20## 📊 Performance Benchmarks
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
+## 📊 Performance Benchmarks
 
 ### Current Implementation Status
 - ✅ **End-to-end Pipeline**: Complete workflow operational
@@ -29,7 +31,7 @@ Unseen languages: 3 (sv_se, da_dk, no_no)
 
 ---
 
-**🔙 [Back to Main Documentation](../README.md) | 🚀 [Quick Start](../README.md#-quick-start) | 🤝 [Contributing](../README.md#-contributing)**0000.svg)](https://github.com/psf/black)
+**🔙 [Back to Main Documentation](../README.md) | 🚀 [Quick Start](../README.md#-quick-start) | 🤝 [Contributing](../README.md#-contributing)**
 
 > **📖 This is the technical documentation for the zero-shot language identification system. For a high-level project overview, see the [main README](../README.md).**
 
