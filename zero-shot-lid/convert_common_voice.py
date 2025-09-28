@@ -7,6 +7,7 @@ Usage:
 """
 
 import sys
+import os
 import tarfile
 import pandas as pd
 import soundfile as sf

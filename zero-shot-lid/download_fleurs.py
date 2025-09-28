@@ -5,12 +5,13 @@ FLEURS Dataset Downloader
 This script downloads specific language subsets from the FLEURS dataset.
 """
 
-from huggingface_hub import snapshot_download
+from datasets import load_dataset
 import os
 from pathlib import Path
+import soundfile as sf
 
 def download_fleurs_languages(languages=None):
-    """Download FLEURS data for specific languages."""
+    """Download FLEURS data for specific languages using modern datasets API."""
     
     if languages is None:
         # Default to a few key languages
@@ -18,25 +19,104 @@ def download_fleurs_languages(languages=None):
     
     print(f"📥 Downloading FLEURS data for {len(languages)} languages...")
     
-    base_dir = Path("data/fleurs_raw")
+    base_dir = Path("data/audio")
     base_dir.mkdir(parents=True, exist_ok=True)
     
     for lang in languages:
         try:
             print(f"⬇️  Downloading {lang}...")
             
-            # Download to language-specific directory
+            # Try different approaches to load FLEURS data
+            dataset = None
+            
+            # Method 1: Try the new format without scripts
+            try:
+                dataset = load_dataset("google/fleurs", name=f"all", split="train")
+                # Filter for specific language
+                dataset = dataset.filter(lambda x: x.get('lang_id', '') == lang)
+            except:
+                pass
+            
+            # Method 2: Try LibriSpeech English
+            if dataset is None and lang == 'en_us':
+                try:
+                    print(f"  Trying LibriSpeech for English...")
+                    dataset = load_dataset("librispeech_asr", "clean", split="train.100", streaming=False)
+                    print(f"  ✅ Loaded LibriSpeech with {len(dataset)} samples")
+                except Exception as e:
+                    print(f"  ❌ LibriSpeech failed: {e}")
+            
+            # Method 3: Try Common Voice if available
+            if dataset is None:
+                try:
+                    # Try Common Voice dataset
+                    print(f"  Trying Common Voice for {lang}...")
+                    # Map our language codes to Common Voice language codes
+                    cv_lang_map = {
+                        'en_us': 'en',
+                        'fr_fr': 'fr', 
+                        'es_419': 'es',
+                        'de_de': 'de',
+                        'it_it': 'it'
+                    }
+                    
+                    if lang in cv_lang_map:
+                        cv_lang = cv_lang_map[lang]
+                        dataset = load_dataset("common_voice", cv_lang, split="train", streaming=False)
+                        print(f"  ✅ Loaded Common Voice {cv_lang} with {len(dataset)} samples")
+                    else:
+                        print(f"  ❌ No Common Voice mapping for {lang}")
+                        
+                except Exception as e:
+                    print(f"  ❌ Common Voice failed: {e}")
+            
+            # Method 4: Skip if no real data available
+            if dataset is None:
+                print(f"  ❌ No real speech datasets available for {lang}")
+                print(f"  💡 Suggestion: Download Common Voice data manually")
+                print(f"     Visit: https://commonvoice.mozilla.org/datasets")
+                continue
+            
+            # Create language directory
             lang_dir = base_dir / lang
+            lang_dir.mkdir(exist_ok=True)
             
-            snapshot_download(
-                repo_id="google/fleurs",
-                repo_type="dataset",
-                local_dir=str(lang_dir),
-                allow_patterns=f"data/{lang}/*",  # Only download this language
-                cache_dir=".cache/huggingface"
-            )
+            # Handle both HuggingFace dataset and demo data
+            if hasattr(dataset, '__len__') and hasattr(dataset, '__getitem__'):
+                # HuggingFace dataset
+                max_samples = min(20, len(dataset))
+                data_source = "HuggingFace"
+            else:
+                # Demo data (list)
+                max_samples = len(dataset)
+                data_source = "demo"
             
-            print(f"✅ Successfully downloaded {lang}")
+            print(f"  Processing {max_samples} samples from {data_source}...")
+            
+            for i in range(max_samples):
+                try:
+                    if hasattr(dataset, '__getitem__'):
+                        sample = dataset[i]
+                    else:
+                        sample = dataset[i]
+                    
+                    # Get audio data
+                    audio = sample['audio']
+                    audio_array = audio['array']
+                    sample_rate = audio['sampling_rate']
+                    
+                    # Save as WAV file
+                    output_path = lang_dir / f"sample_{i:03d}.wav"
+                    sf.write(output_path, audio_array, sample_rate)
+                    
+                    if i % 5 == 0:
+                        print(f"    Saved {i+1}/{max_samples} samples...")
+                        
+                except Exception as sample_e:
+                    print(f"    ⚠️  Failed to save sample {i}: {sample_e}")
+                    continue
+            
+            print(f"✅ Successfully saved {max_samples} audio samples for {lang}")
             
         except Exception as e:
             print(f"❌ Failed to download {lang}: {e}")
@@ -49,66 +129,36 @@ def download_fleurs_languages(languages=None):
             file_count = len(list(lang_dir.rglob("*")))
             print(f"  {lang_dir.name}: {file_count} files")
 
-def convert_to_local_format():
-    """Convert downloaded FLEURS data to local audio format."""
+def verify_downloaded_data():
+    """Verify the downloaded audio data."""
     
-    print("\n🔄 Converting to local audio format...")
+    print("\n� Verifying downloaded data...")
     
-    import pandas as pd
-    from datasets import load_dataset
-    import soundfile as sf
-    import shutil
-    
-    fleurs_dir = Path("data/fleurs_raw")
     audio_dir = Path("data/audio")
-    audio_dir.mkdir(parents=True, exist_ok=True)
     
-    # Process each language directory
-    for lang_dir in fleurs_dir.iterdir():
-        if not lang_dir.is_dir():
-            continue
-            
-        lang_code = lang_dir.name
-        output_lang_dir = audio_dir / lang_code
-        output_lang_dir.mkdir(exist_ok=True)
-        
-        try:
-            print(f"Processing {lang_code}...")
-            
-            # Look for audio files in the downloaded data
-            audio_files = list(lang_dir.rglob("*.wav")) + list(lang_dir.rglob("*.mp3"))
-            
-            if audio_files:
-                # Copy audio files with sequential naming
-                for i, audio_file in enumerate(audio_files[:50]):  # Limit to 50 files
-                    output_file = output_lang_dir / f"sample_{i:03d}.wav"
-                    
-                    # Copy and potentially convert
-                    if audio_file.suffix == '.wav':
-                        shutil.copy2(audio_file, output_file)
-                    else:
-                        # Convert other formats to WAV using soundfile
-                        try:
-                            audio, sr = sf.read(audio_file)
-                            sf.write(output_file, audio, sr)
-                        except Exception as convert_e:
-                            print(f"  ⚠️  Failed to convert {audio_file}: {convert_e}")
-                            continue
-                
-                print(f"  ✅ Converted {min(len(audio_files), 50)} files for {lang_code}")
-            else:
-                print(f"  ⚠️  No audio files found for {lang_code}")
-                
-        except Exception as e:
-            print(f"  ❌ Error processing {lang_code}: {e}")
-            continue
+    if not audio_dir.exists():
+        print("❌ No audio data directory found!")
+        return False
     
-    print("\n🎉 Conversion complete!")
-    print("\n📁 Final audio structure:")
+    total_files = 0
+    print("\n📁 Audio data structure:")
+    
     for lang_dir in audio_dir.iterdir():
         if lang_dir.is_dir():
             audio_files = list(lang_dir.glob("*.wav"))
+            total_files += len(audio_files)
             print(f"  {lang_dir.name}: {len(audio_files)} audio files")
+            
+            # Test loading a sample file
+            if audio_files:
+                try:
+                    test_audio, sr = sf.read(audio_files[0])
+                    print(f"    ✅ Sample: {test_audio.shape}, {sr}Hz")
+                except Exception as e:
+                    print(f"    ❌ Error reading sample: {e}")
+    
+    print(f"\nTotal audio files: {total_files}")
+    return total_files > 0
 
 if __name__ == "__main__":
     # List of languages to download (you can modify this)
@@ -122,7 +172,7 @@ if __name__ == "__main__":
     ]
     
     download_fleurs_languages(languages_to_download)
-    convert_to_local_format()
+    verify_downloaded_data()
     
     print("\n🚀 Ready to use!")
     print("Run: python main.py")

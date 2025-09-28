@@ -13,7 +13,7 @@ import numpy as np
 from tqdm import tqdm
 from collections import defaultdict
 
-from . import config
+import config
 from .model import ProjectionHead
 from .features import compute_cosine_similarity, normalize_embeddings
 

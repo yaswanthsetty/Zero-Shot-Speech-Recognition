@@ -19,7 +19,7 @@ except ImportError:
     PANPHON_AVAILABLE = False
 
 import librosa
-from . import config
+import config
 
 
 class AudioEmbedder:

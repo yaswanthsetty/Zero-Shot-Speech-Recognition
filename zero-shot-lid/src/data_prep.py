@@ -16,7 +16,7 @@ try:
     import soundfile as sf
 except ImportError:
     sf = None
-from . import config
+import config
 
 
 def load_local_audio_data(data_dir="data/audio"):

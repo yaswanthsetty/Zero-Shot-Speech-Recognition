@@ -14,7 +14,7 @@ import numpy as np
 from tqdm import tqdm
 import os
 
-from . import config
+import config
 from .model import ProjectionHead
 from .features import normalize_embeddings, compute_cosine_similarity
 
@@ -164,7 +164,7 @@ def train_epoch(
     for batch_idx, batch in enumerate(pbar):
         # Get batch data
         audio_features = batch['audio_features'].to(device)
-        languages = batch['languages']
+        languages = batch['language']  # Note: 'language' not 'languages'
         
         # Zero gradients
         optimizer.zero_grad()

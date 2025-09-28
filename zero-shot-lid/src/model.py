@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional
-from . import config
+import config
 
 
 class ProjectionHead(nn.Module):
