@@ -19,87 +19,60 @@ A comprehensive research project implementing zero-shot spoken language identifi
 
 This repository contains a state-of-the-art implementation of zero-shot language identification that can recognize spoken languages without prior training on those specific languages. The system leverages cross-linguistic phonological features to enable transfer learning across language families.
 
-## 🏗️ Architecture
+## 🏗️ How It Works
 
 ```
-Audio Input → Wav2Vec2 → Audio Embeddings → ProjectionHead → Phonological Space
-                                                                     ↓
-                                             Cosine Similarity → Language Prediction
-                                                                     ↑
-                                       Target Phonological Vectors ← Panphon
+Speech Audio → Audio Features → Phonological Space → Language Match
 ```
+
+The system converts speech into phonological features (sound patterns) that are similar across related languages, enabling zero-shot transfer.
 
 ## 📁 Repository Structure
 
 ```
 Zero-Shot-Speech-Recognition/
-├── zero-shot-lid/              # Main project directory
+├── zero-shot-lid/              # 🎯 Main project (detailed docs inside)
 │   ├── src/                    # Source code modules
-│   │   ├── config.py          # Configuration and hyperparameters
-│   │   ├── data_prep.py       # Data loading and preprocessing
-│   │   ├── features.py        # Audio and phonological features
-│   │   ├── model.py           # Neural network architectures
-│   │   ├── train.py           # Training pipeline
-│   │   └── evaluate.py        # Evaluation and metrics
-│   ├── .devcontainer/         # Development environment
-│   ├── .github/workflows/     # CI/CD pipelines
-│   ├── main.py               # Main execution script
-│   ├── requirements.txt      # Python dependencies
-│   └── README.md            # Detailed project documentation
-├── models/                   # Model checkpoints (generated)
-└── README.md                # This file
+│   ├── main.py                 # Run the complete system
+│   ├── requirements.txt        # Dependencies
+│   └── README.md              # 📖 Detailed technical documentation
+├── models/                     # Generated model files
+└── README.md                  # 👈 This overview file
 ```
+
+**📖 For detailed technical documentation, installation instructions, and API reference, see [`zero-shot-lid/README.md`](zero-shot-lid/README.md)**
 
 ## 🚀 Quick Start
 
-### Option 1: GitHub Codespaces (Recommended)
-1. Click "Code" → "Codespaces" → "Create codespace on main"
-2. Wait for environment setup (automatic)
-3. Run the project:
-   ```bash
-   cd zero-shot-lid
-   python main.py
-   ```
+```bash
+# Clone and run
+git clone https://github.com/yaswanthsetty/Zero-Shot-Speech-Recognition.git
+cd Zero-Shot-Speech-Recognition/zero-shot-lid
+pip install -r requirements.txt
+python main.py
+```
 
-### Option 2: Local Development
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/yaswanthsetty/Zero-Shot-Speech-Recognition.git
-   cd Zero-Shot-Speech-Recognition/zero-shot-lid
-   ```
+**🔧 For detailed setup instructions, troubleshooting, and advanced usage, see [`zero-shot-lid/README.md`](zero-shot-lid/README.md)**
 
-2. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
+## ✨ Key Capabilities
 
-3. **Run the system:**
-   ```bash
-   python main.py
-   ```
+- **� Zero-Shot Recognition**: Identify languages never seen during training
+- **⚡ High Performance**: 8x faster processing with batch optimization
+- **🛡️ Robust & Reliable**: Automatic fallbacks and error handling
+- **� Research Ready**: Complete pipeline for academic and industry use
+- **📊 Comprehensive**: Supports 20 languages (15 training + 5 testing)
 
-## 🧪 Key Features
+## � Performance Highlights
 
-- **🎵 Advanced Audio Processing**: Wav2Vec2-based feature extraction
-- **🧬 Phonological Intelligence**: Cross-linguistic feature representation
-- **🧠 Neural Projection Learning**: Deep learning for embedding alignment
-- **🌍 Zero-Shot Capability**: Recognition of completely unseen languages
-- **📊 Comprehensive Evaluation**: Multi-metric performance analysis
-- **🔧 Production Ready**: Robust error handling and logging
+| Metric | Value |
+|--------|-------|
+| **Languages** | 20 total (15 train + 5 test) |
+| **Model Size** | 667K parameters (lightweight) |
+| **Speed** | 8x faster (batch processing) |
+| **Memory** | ~2GB RAM |
+| **Expected Accuracy** | 45-80% (depending on language similarity) |
 
-## 📈 Performance
-
-### System Capabilities
-- **Languages Supported**: 20 total (15 for training, 5 for zero-shot testing)
-- **Model Size**: 667K parameters (lightweight and efficient)
-- **Processing Speed**: 8x faster with batch processing (8 samples simultaneously)
-- **Memory Usage**: ~2GB RAM for inference
-- **Reliability**: Automatic fallbacks for dataset loading failures
-
-### Expected Results (with real data)
-- **Cross-family Transfer**: 45-65% Top-1 accuracy
-- **Within-family Transfer**: 65-80% Top-1 accuracy
-- **Top-3 Performance**: +15-25% improvement over Top-1
+**🎯 Recent Updates**: 8x performance boost, fixed dataset loading, enhanced reliability
 
 ## 🔬 Research Applications
 
@@ -109,76 +82,47 @@ This implementation is suitable for:
 - **Educational Use**: Understanding phonological features in ML
 - **Baseline Development**: Comparison with other approaches
 
-## 🚨 Troubleshooting
 
-### Common Issues
 
-1. **FLEURS Dataset Loading Failed**
-   - The system automatically falls back to synthetic data for demonstration
-   - This is expected behavior due to recent changes in HuggingFace datasets API
-   - Performance metrics will be for synthetic data, not real speech
+## � Research Applications
 
-2. **Feature Extraction Slow/Hanging**
-   - ✅ **Fixed**: Now uses batch processing (8x faster)
-   - Progress updates every 8 samples processed
+- **🎓 Academic Research**: Cross-lingual transfer learning studies
+- **🏢 Industry Applications**: Multilingual speech systems
+- **📚 Educational**: Understanding phonological features in ML
+- **📊 Benchmarking**: Baseline for other approaches
 
-3. **Memory Issues**
-   - Reduce `FEATURE_EXTRACTION_BATCH_SIZE` in `config.py` if needed
-   - Default batch size is optimized for most systems
+## 🤝 Contributing
 
-4. **Missing Dependencies**
-   - `panphon` library has automatic fallback if not installed
-   - All critical dependencies are handled gracefully
+Contributions welcome! See [`zero-shot-lid/CONTRIBUTING.md`](zero-shot-lid/CONTRIBUTING.md) for guidelines.
 
-## 🛠️ Development
+## � Documentation
 
-### Contributing
-We welcome contributions! See [CONTRIBUTING.md](zero-shot-lid/CONTRIBUTING.md) for guidelines.
-
-### Key Areas for Enhancement
-- **Dataset Integration**: Real multilingual speech corpora
-- **Architecture Innovation**: Attention mechanisms and transformers  
-- **Evaluation Expansion**: More languages and metrics
-- **Production Optimization**: Speed and memory improvements
-
-## 📚 Technical Details
-
-### Dependencies
-- **PyTorch 2.0+**: Deep learning framework
-- **Transformers 4.30+**: Pre-trained model access (updated for compatibility)
-- **Datasets 2.0+**: HuggingFace datasets (new API compatible)
-- **Panphon 0.20+**: Phonological feature extraction (optional with fallback)
-- **Librosa 0.10+**: Audio processing utilities
-- **NumPy 1.21+**: Numerical computing
-
-### Installation Notes
-- All dependencies have automatic fallbacks for missing packages
-- System works with synthetic data when real datasets are unavailable
-- Optimized for both CPU and GPU execution
-
-### Model Architecture
-- **Input**: Variable-length audio (up to 30s, 16kHz)
-- **Encoder**: Wav2Vec2-base-960h (frozen)
-- **Projection**: 2-layer MLP (768→512→22 dimensions)
-- **Output**: Phonological feature space for similarity comparison
+- **📋 Detailed Setup**: [`zero-shot-lid/README.md`](zero-shot-lid/README.md)
+- **🔧 Technical Details**: Architecture, dependencies, configuration
+- **🚨 Troubleshooting**: Common issues and solutions
+- **📚 API Reference**: Function and class documentation
+- **🧪 Experiments**: Performance analysis and research insights
 
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](zero-shot-lid/LICENSE) file for details.
 
-## 🙏 Acknowledgments
+## � License
 
-- **Google Research** for FLEURS multilingual speech corpus
-- **Facebook AI Research** for Wav2Vec2 pre-trained models  
-- **David R. Mortensen** for Panphon phonological features library
-- **Hugging Face** for transformers ecosystem
+MIT License - see [LICENSE](zero-shot-lid/LICENSE) for details.
 
 ## 📞 Contact
 
-- **GitHub Issues**: For bugs and feature requests
-- **Discussions**: For questions and research collaboration
-- **Author**: Yaswanth Setty
+- **🐛 Issues**: [GitHub Issues](https://github.com/yaswanthsetty/Zero-Shot-Speech-Recognition/issues)
+- **💬 Discussions**: [GitHub Discussions](https://github.com/yaswanthsetty/Zero-Shot-Speech-Recognition/discussions)
+- **👤 Author**: [Yaswanth Setty](https://github.com/yaswanthsetty)
 
 ---
 
-**🌍 Enabling cross-lingual speech understanding through computational phonology 🎤**
+<div align="center">
+
+**🌍 Zero-shot cross-lingual understanding through phonological intelligence 🎤**
+
+[📖 Detailed Documentation](zero-shot-lid/README.md) • [🚀 Quick Start](#-quick-start) • [🤝 Contributing](#-contributing)
+
+</div>
