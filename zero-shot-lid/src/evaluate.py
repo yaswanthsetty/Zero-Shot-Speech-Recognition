@@ -67,6 +67,23 @@ def evaluate_zero_shot(
     all_true_languages = []
     all_similarities = []
     
+    # Check if test_loader is empty
+    if len(test_loader) == 0:
+        print("⚠️  No test data available for zero-shot evaluation")
+        print("   This happens when all your languages are 'seen' languages")
+        print("   To perform zero-shot evaluation, you need some 'unseen' languages")
+        
+        # Return empty results
+        return {
+            'top_1_accuracy': 0.0,
+            'top_3_accuracy': 0.0,
+            'top_5_accuracy': 0.0,
+            'total_samples': 0,
+            'language_accuracies': {},
+            'confusion_matrix': None,
+            'message': 'No test data available - all languages are seen languages'
+        }
+    
     # Evaluate on test data
     with torch.no_grad():
         pbar = tqdm(test_loader, desc="Evaluating") if verbose else test_loader
@@ -74,7 +91,7 @@ def evaluate_zero_shot(
         for batch in pbar:
             # Get batch data
             audio_features = batch['audio_features'].to(device)
-            true_languages = batch['languages']
+            true_languages = batch['language']  # Fixed: use 'language' not 'languages'
             
             # Get model predictions
             predicted_embeddings = model(audio_features)  # [batch_size, embedding_dim]
@@ -88,6 +105,19 @@ def evaluate_zero_shot(
             all_predictions.append(predicted_embeddings.cpu())
             all_similarities.append(similarities.cpu())
             all_true_languages.extend(true_languages)
+    
+    # Check if we actually got any data
+    if len(all_predictions) == 0:
+        print("⚠️  No test samples were processed")
+        return {
+            'top_1_accuracy': 0.0,
+            'top_3_accuracy': 0.0,
+            'top_5_accuracy': 0.0,
+            'total_samples': 0,
+            'language_accuracies': {},
+            'confusion_matrix': None,
+            'message': 'No test samples processed'
+        }
     
     # Concatenate all results
     all_predictions = torch.cat(all_predictions, dim=0)

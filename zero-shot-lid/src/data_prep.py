@@ -6,6 +6,7 @@ and evaluation purposes. Now includes support for local audio files.
 """
 
 import torch
+import torch.nn.functional as F
 import numpy as np
 from datasets import load_dataset
 from torch.utils.data import Dataset, DataLoader
@@ -481,6 +482,105 @@ def load_and_split_data(
     return train_dataset, validation_dataset, test_dataset
 
 
+def collate_audio_batch(batch):
+    """
+    Custom collate function to handle variable-length audio samples.
+    Pads or truncates audio to a fixed length and handles audio features.
+    """
+    # Extract components
+    audio_features = []
+    audio_raw = []
+    labels = []
+    languages = []
+    
+    # Process each item in the batch
+    for item in batch:
+        # Handle audio features (embeddings from Wav2Vec2)
+        if 'audio_features' in item and item['audio_features'] is not None:
+            audio_features.append(item['audio_features'])
+        
+        # Handle raw audio (if present)
+        if 'audio' in item and item['audio'] is not None:
+            audio = item['audio']
+            
+            # Handle different audio formats
+            if isinstance(audio, dict):
+                # FLEURS-style format: {'array': np.array, 'sampling_rate': int}
+                if 'array' in audio:
+                    audio_array = audio['array']
+                else:
+                    # Skip if no array found
+                    continue
+            else:
+                # Direct array
+                audio_array = audio
+            
+            # Convert to tensor if it's numpy array
+            if isinstance(audio_array, np.ndarray):
+                audio_tensor = torch.tensor(audio_array, dtype=torch.float32)
+            elif isinstance(audio_array, torch.Tensor):
+                audio_tensor = audio_array.float()
+            else:
+                audio_tensor = torch.tensor(audio_array, dtype=torch.float32)
+            
+            # Ensure 1D
+            if audio_tensor.dim() > 1:
+                audio_tensor = audio_tensor.squeeze()
+            
+            audio_raw.append(audio_tensor)
+        
+        # Handle labels and languages
+        if 'label' in item:
+            labels.append(item['label'])
+        elif 'lang_id' in item:
+            # Map language to numeric label if needed
+            # For now, just use a placeholder
+            labels.append(0)
+        
+        if 'language' in item:
+            languages.append(item['language'])
+        elif 'lang_id' in item:
+            languages.append(item['lang_id'])
+        else:
+            languages.append('unknown')
+    
+    # Build result dictionary
+    result = {
+        'labels': torch.tensor(labels, dtype=torch.long),
+        'language': languages  # Note: singular 'language' to match training code
+    }
+    
+    # Stack audio features if present
+    if audio_features:
+        try:
+            result['audio_features'] = torch.stack(audio_features)
+        except RuntimeError as e:
+            # If stacking fails, pad to same size
+            max_len = max(feat.shape[0] for feat in audio_features)
+            padded_features = []
+            for feat in audio_features:
+                if feat.shape[0] < max_len:
+                    padding = max_len - feat.shape[0]
+                    feat = F.pad(feat, (0, 0, 0, padding), 'constant', 0)
+                padded_features.append(feat)
+            result['audio_features'] = torch.stack(padded_features)
+    
+    # Stack raw audio if present (pad to same length)
+    if audio_raw:
+        max_len = max(len(audio) for audio in audio_raw)
+        padded_audio = []
+        for audio in audio_raw:
+            if len(audio) < max_len:
+                padding = max_len - len(audio)
+                audio = F.pad(audio, (0, padding), 'constant', 0)
+            elif len(audio) > max_len:
+                audio = audio[:max_len]
+            padded_audio.append(audio)
+        result['audio'] = torch.stack(padded_audio)
+    
+    return result
+
+
 def create_data_loaders(
     train_dataset: AudioDataset,
     validation_dataset: AudioDataset, 
@@ -508,7 +608,8 @@ def create_data_loaders(
         batch_size=batch_size,
         shuffle=True,
         num_workers=0,  # Set to 0 for compatibility
-        pin_memory=False
+        pin_memory=False,
+        collate_fn=collate_audio_batch
     )
     
     validation_loader = DataLoader(
@@ -516,7 +617,8 @@ def create_data_loaders(
         batch_size=batch_size,
         shuffle=False,
         num_workers=0,
-        pin_memory=False
+        pin_memory=False,
+        collate_fn=collate_audio_batch
     )
     
     test_loader = DataLoader(
@@ -524,7 +626,8 @@ def create_data_loaders(
         batch_size=batch_size,
         shuffle=False,
         num_workers=0,
-        pin_memory=False
+        pin_memory=False,
+        collate_fn=collate_audio_batch
     )
     
     print(f"Created data loaders with batch size: {batch_size}")

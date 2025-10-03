@@ -218,39 +218,63 @@ def main():
         # Step 8: Generate and display final results
         print("STEP 8: FINAL RESULTS")
         print("-" * 40)
+
+        top1_acc = 0.0
+        top3_acc = 0.0
         
-        # Generate evaluation report
-        report = generate_evaluation_report(
-            evaluation_results, 
-            save_path="../models/evaluation_report.txt"
-        )
-        print(report)
-        
-        # Print summary
-        print("\nSUMMARY:")
-        print("-" * 20)
-        top1_acc = evaluation_results.get('top_1_accuracy', 0)
-        top3_acc = evaluation_results.get('top_3_accuracy', 0)
-        
-        print(f"✅ Zero-shot Top-1 Accuracy: {top1_acc:.4f} ({top1_acc*100:.2f}%)")
-        print(f"✅ Zero-shot Top-3 Accuracy: {top3_acc:.4f} ({top3_acc*100:.2f}%)")
-        print(f"✅ Total test samples: {evaluation_results.get('total_samples', 'N/A')}")
-        print(f"✅ Number of unseen languages: {len(config.UNSEEN_LANGUAGES)}")
-        
-        # Performance interpretation
-        print("\nPERFORMANCE INTERPRETATION:")
-        print("-" * 30)
-        if top1_acc > 0.6:
-            print("🎉 Excellent performance! The model generalizes very well to unseen languages.")
-        elif top1_acc > 0.4:
-            print("👍 Good performance! The model shows promising zero-shot capabilities.")
-        elif top1_acc > 0.2:
-            print("🤔 Moderate performance. The model has learned some transferable patterns.")
+        # Check if evaluation was successful
+        if evaluation_results.get('total_samples', 0) == 0:
+            print("⚠️  ZERO-SHOT EVALUATION SKIPPED")
+            print("   Reason:", evaluation_results.get('message', 'No test data available'))
+            print()
+            print("📋 TO ENABLE ZERO-SHOT EVALUATION:")
+            print("   1. Add audio files for 'unseen' languages (e.g., sv_se, da_dk, no_no)")
+            print("   2. Or modify config.py to move some current languages to UNSEEN_LANGUAGES")
+            print()
+            print("✅ TRAINING COMPLETED SUCCESSFULLY!")
+            print(f"✅ Model saved to: ../models/projection_model.pth")
+            print(f"✅ Final training loss: {trained_model.training_history['train_losses'][-1]:.4f}")
+            print(f"✅ Final validation loss: {trained_model.training_history['val_losses'][-1]:.4f}")
         else:
-            print("⚠️  Low performance. Consider adjusting hyperparameters or model architecture.")
+            # Generate evaluation report
+            report = generate_evaluation_report(
+                evaluation_results, 
+                save_path="../models/evaluation_report.txt"
+            )
+            print(report)
+            
+            # Print summary
+            print("\nSUMMARY:")
+            print("-" * 20)
+            top1_acc = evaluation_results.get('top_1_accuracy', 0)
+            top3_acc = evaluation_results.get('top_3_accuracy', 0)
+            
+            print(f"✅ Zero-shot Top-1 Accuracy: {top1_acc:.4f} ({top1_acc*100:.2f}%)")
+            print(f"✅ Zero-shot Top-3 Accuracy: {top3_acc:.4f} ({top3_acc*100:.2f}%)")
+            print(f"✅ Total test samples: {evaluation_results.get('total_samples', 'N/A')}")
+            print(f"✅ Number of unseen languages: {len(config.UNSEEN_LANGUAGES)}")
         
-        if top3_acc > top1_acc + 0.2:
-            print("📈 Significant improvement in Top-3 accuracy suggests the model is on the right track.")
+        # Performance interpretation (only if we have evaluation results)
+        if evaluation_results is not None:
+            print("\nPERFORMANCE INTERPRETATION:")
+            print("-" * 30)
+            if top1_acc > 0.6:
+                print("🎉 Excellent performance! The model generalizes very well to unseen languages.")
+            elif top1_acc > 0.4:
+                print("👍 Good performance! The model shows promising zero-shot capabilities.")
+            elif top1_acc > 0.2:
+                print("🤔 Moderate performance. The model has learned some transferable patterns.")
+            else:
+                print("⚠️  Low performance. Consider adjusting hyperparameters or model architecture.")
+            
+            if top3_acc > top1_acc + 0.2:
+                print("📈 Significant improvement in Top-3 accuracy suggests the model is on the right track.")
+        else:
+            print("\nPERFORMANCE INTERPRETATION:")
+            print("-" * 30)
+            print("📊 Training completed successfully with decreasing loss values.")
+            print("🔄 To evaluate zero-shot performance, add audio data for unseen languages.")
+            print("💡 Current model can be used for seen language classification.")
         
         print()
         print("="*80)

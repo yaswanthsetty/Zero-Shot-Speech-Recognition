@@ -129,6 +129,12 @@ def train_model(
     print(f"Final train loss: {train_losses[-1]:.4f}")
     print(f"Final validation loss: {val_losses[-1]:.4f}")
     
+    # Add training history to the model for easy access
+    model.training_history = {
+        'train_losses': train_losses,
+        'val_losses': val_losses
+    }
+    
     return model
 
 
@@ -245,7 +251,7 @@ def validate_epoch(
         for batch in pbar:
             # Get batch data
             audio_features = batch['audio_features'].to(device)
-            languages = batch['languages']
+            languages = batch['language']  # Fixed: use 'language' not 'languages'
             
             # Forward pass
             predicted_embeddings = model(audio_features)
